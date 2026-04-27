@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 Slipstream Presentation</title>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #121212; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #666; }
+
+        body, html {
+            margin: 0; padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #16181a;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+        
+        .slide {
+            position: absolute; top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            display: none;
+            flex-direction: row;
+            justify-content: center; align-items: center;
+            padding: 40px; box-sizing: border-box;
+            background: transparent;
+            opacity: 0; transition: opacity 0.5s ease;
+            overflow: hidden;
+        }
+        .slide.active { display: flex; opacity: 1; z-index: 10; }
+
+        .canvas-bg {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%; z-index: 0;
+        }
+
+        .content-box {
+            position: relative; z-index: 1;
+            background: rgba(20, 22, 24, 0.7);
+            padding: 40px; border-radius: 4px;
+            border-left: 2px solid #666;
+            backdrop-filter: blur(12px);
+            max-width: 45vw; max-height: 85vh;
+            overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .content-full { max-width: 90vw; width: 100%; background: transparent; border: none; box-shadow: none; padding: 20px; }
+
+        h1, h2, h3 { font-weight: 300; margin-top: 0; }
+        h1 { font-size: 2.2rem; color: #ffffff; letter-spacing: 0.5px; line-height: 1.2; margin-bottom: 20px; }
+        h2 { font-size: 1.2rem; color: #aaaaaa; border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 10px; margin-top: 20px; }
+        p, li { font-size: 0.95rem; color: #bbbbbb; line-height: 1.5; font-weight: 300; margin: 8px 0; }
+        .mjx-chtml { margin: 0.5em 0 !important; }
+        
+        .results-grid {
+            display: grid; grid-template-columns: 1fr 1fr; grid-gap: 50px;
+            margin-top: 30px; max-height: 75vh; overflow-y: auto; padding-right: 20px;
+        }
+        .result-item { display: flex; flex-direction: column; }
+        .result-item h3 { font-size: 1.1rem; color: #ddd; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .result-info { font-size: 0.9rem; color: #777; margin-top: 10px; font-weight: 300; }
+        .result-item img, .result-item video {
+            width: 100%; height: 280px; object-fit: contain;
+            border-radius: 4px; cursor: pointer; transition: opacity 0.2s;
+            background: #0a0a0a; border: 1px solid #222;
+        }
+        .result-item img:hover, .result-item video:hover { opacity: 0.7; }
+
+        .interactive-launcher {
+            height: 280px; width: 100%;
+            background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            cursor: pointer; transition: background 0.2s; color: #ccc;
+        }
+        .interactive-launcher:hover { background: #252525; color: #fff; }
+        .interactive-launcher svg { width: 40px; height: 40px; margin-bottom: 15px; fill: currentColor; }
+
+        .modal {
+            display: none; position: fixed; z-index: 100;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.95);
+            justify-content: center; align-items: center; flex-direction: column;
+        }
+        .modal img { max-width: 90vw; max-height: 90vh; border-radius: 4px; object-fit: contain; }
+        .modal iframe { width: 90vw; height: 90vh; border: 1px solid #333; border-radius: 4px; background: #000; }
+        .close-modal {
+            position: absolute; top: 15px; right: 30px;
+            font-size: 40px; color: #888; cursor: pointer; font-weight: 300; transition: color 0.2s; z-index: 101;
+        }
+        .close-modal:hover { color: #fff; }
+        
+        .controls {
+            position: fixed; bottom: 20px; right: 20px; z-index: 50;
+            color: #666; font-size: 0.9em; font-weight: 300;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide active" id="slide0">
+        <div id="canvas-d3q19" class="canvas-bg" style="left: 45vw; width: 55vw;"></div>
+        <div class="content-box" style="margin-right: auto; max-width: 40vw;">
+            <h1>A Lattice Boltzmann simulation of the air particles over an F1 car during slipstream</h1>
+            <h2 style="margin-top: 0;">1. Macroscopic Properties</h2>
+            <p>From the particle directional distribution \( f_i \), density and momentum are retrieved:</p>
+            <p>\[ \rho = \sum_{i=0}^{18} f_i \quad \text{and} \quad \mathbf{u} = \frac{1}{\rho} \sum_{i=0}^{18} f_i \mathbf{e}_i \]</p>
+            <h2>2. Equilibrium Distribution (D3Q19)</h2>
+            <p>The target kinetic equilibrium towards which the system relaxes:</p>
+            <p>\[ f_i^{eq} = w_i \rho \left( 1 + \frac{3 \mathbf{e}_i \cdot \mathbf{u}}{c_s^2} + \frac{9 (\mathbf{e}_i \cdot \mathbf{u})^2}{2 c_s^4} - \frac{3 \mathbf{u} \cdot \mathbf{u}}{2 c_s^2} \right) \]</p>
+            <h2>3. BGK Collision Operator</h2>
+            <p>Particles collide and shift based on the single relaxation time \( \tau \):</p>
+            <p>\[ f_i^*(\mathbf{x}, t) = f_i(\mathbf{x}, t) - \frac{1}{\tau} \left( f_i(\mathbf{x}, t) - f_i^{eq}(\mathbf{x}, t) \right) \]</p>
+            <h2>4. Streaming Step</h2>
+            <p>The particle movement function which occurs when no collisions happen: </p>
+            <p>\[ f_i(\mathbf{x} + \mathbf{e}_i \Delta t, t + \Delta t) = f_i^*(\mathbf{x}, t) \]</p>
+            <h2>5. Momentum Exchange</h2>
+            <p>Forces are measured by integrating particle positions on collisions:</p>
+            <p>\[ \mathbf{F} = \frac{\delta x}{\delta t} \sum_{\mathbf{x}_b} \sum_{i} \mathbf{e}_i \left( f_i(\mathbf{x}_b) + f_{\bar{i}}(\mathbf{x}_b) \right) \]</p>
+            <h2>6. Quaternion Kinematics</h2>
+            <p>Used to manipulate rotations of the f1 car:</p>
+            <p>\[ \mathbf{v}' = \mathbf{q} \mathbf{v} \mathbf{q}^{-1} \]</p>
+        </div>
+    </div>
+
+    <div class="slide" id="slide1">
+        <div id="canvas-slipstream" class="canvas-bg"></div>
+        <div class="content-box" style="position: absolute; bottom: 40px; left: 40px; max-width: 35vw;">
+            <h1>The principles behind slipstream</h1>
+            <p>Slipstream occurs due 2 main steps. One being the pressure difference between the front and back of the F1 vehicle producing drag causing the dirty air which impacts slipstream.</p>
+            <p>The dirty air of the trailing vehicle creates a region of even lower pressure, which reduces the aerodynamic resistance, allowing for optimal conditions to gain speed against the lead car</p>
+        </div>
+    </div>
+
+    <div class="slide" id="slide2">
+        <div class="content-box content-full">
+            <h1 style="margin-bottom: 0;">Simulation Results</h1>
+            <div class="results-grid">
+                <div class="result-item" style="grid-column: span 2;">
+                    <h3>Interactive 3D WebGL Viewer</h3>
+                    <div class="interactive-launcher" onclick="openIframeModal('interactive_slipstream.html')">
+                        <span>Click to open static image</span>
+                    </div>
+                </div>
+                <div class="result-item">
+                    <h3>Drag Velocity Curve</h3>
+                    <img src="testingData/drag_velocity_curve.png" alt="Drag Velocity Curve" onclick="openImgModal(this.src)">
+                    <span class="result-info">Click mapping to expand view.</span>
+                </div>
+                <div class="result-item">
+                    <h3>Velocity Heatmap</h3>
+                    <img src="testingData/velocity_heatmap.png" alt="Velocity Heatmap" onclick="openImgModal(this.src)">
+                    <span class="result-info">Click to view local velocity distributions.</span>
+                </div>
+                <div class="result-item" style="grid-column: span 2;">
+                    <h3>Slipstream Drag Profiling</h3>
+                    <img src="testingData/slipstream_drag.png" alt="Slipstream Drag Analysis" onclick="openImgModal(this.src)">
+                    <span class="result-info">Quantitative difference across standard distance.</span>
+                </div>
+                <div class="result-item" style="grid-column: span 2; margin-bottom: 40px;">
+                    <h3>3D Simulation</h3>
+                    <video src="https://github.com/user-attachments/assets/d4875aee-6615-4385-affa-60bb81ba8283" controls loop muted></video>
+                    <span class="result-info">Resulting particle traces around the F1 frame.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="media-modal" class="modal">
+        <span class="close-modal" onclick="closeModal()">&times;</span>
+        <img id="modal-img" src="" style="display:none;">
+        <iframe id="modal-iframe" src="" style="display:none;"></iframe>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        let modalOpen = false;
+        let isScrolling = false;
+
+        window.addEventListener('wheel', (e) => {
+            if (modalOpen || isScrolling) return;
+            isScrolling = true;
+            setTimeout(() => { isScrolling = false; }, 600);
+            if (e.deltaY > 0) {
+                slides[currentSlide].classList.remove('active');
+                currentSlide = Math.min(currentSlide + 1, slides.length - 1);
+                slides[currentSlide].classList.add('active');
+            } else if (e.deltaY < 0) {
+                slides[currentSlide].classList.remove('active');
+                currentSlide = Math.max(currentSlide - 1, 0);
+                slides[currentSlide].classList.add('active');
+            }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (modalOpen && e.key === 'Escape') { closeModal(); return; }
+            if (!modalOpen) {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+                    slides[currentSlide].classList.remove('active');
+                    currentSlide = Math.min(currentSlide + 1, slides.length - 1);
+                    slides[currentSlide].classList.add('active');
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    slides[currentSlide].classList.remove('active');
+                    currentSlide = Math.max(currentSlide - 1, 0);
+                    slides[currentSlide].classList.add('active');
+                }
+            }
+        });
+
+        function openImgModal(src) {
+            document.getElementById('media-modal').style.display = 'flex';
+            document.getElementById('modal-img').src = src;
+            document.getElementById('modal-img').style.display = 'block';
+            document.getElementById('modal-iframe').style.display = 'none';
+            modalOpen = true;
+        }
+
+        function openIframeModal(src) {
+            document.getElementById('media-modal').style.display = 'flex';
+            document.getElementById('modal-iframe').src = src;
+            document.getElementById('modal-iframe').style.display = 'block';
+            document.getElementById('modal-img').style.display = 'none';
+            modalOpen = true;
+        }
+
+        function closeModal() {
+            document.getElementById('media-modal').style.display = 'none';
+            document.getElementById('modal-iframe').src = '';
+            modalOpen = false;
+        }
+
+        document.getElementById('media-modal').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+
+        // --- SLIDE 1: D3Q19 Visual ---
+        (function initD3Q19() {
+            const container = document.getElementById('canvas-d3q19');
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+            camera.position.set(3, 3, 4); camera.lookAt(0, 0, 0);
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            const group = new THREE.Group();
+            scene.add(group);
+            group.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 32, 32), new THREE.MeshBasicMaterial({ color: 0x444444 })));
+
+            const dirs = [ [1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1], [1,1,0], [-1,1,0], [1,-1,0], [-1,-1,0], [1,0,1], [-1,0,1], [1,0,-1], [-1,0,-1], [0,1,1], [0,-1,1], [0,1,-1], [0,-1,-1] ];
+            const arrowLineMat = new THREE.LineBasicMaterial({ color: 0x333333 });
+            const headMat = new THREE.MeshBasicMaterial({ color: 0x888888 }); // Match grey
+            dirs.forEach(d => {
+                const vec = new THREE.Vector3(d[0], d[1], d[2]);
+                const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), vec]), arrowLineMat);
+                group.add(line);
+                const head = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 8), headMat);
+                head.position.copy(vec); head.lookAt(vec.clone().multiplyScalar(2)); head.rotateX(Math.PI / 2);
+                group.add(head);
+            });
+
+            function animate() { requestAnimationFrame(animate); group.rotation.y += 0.003; group.rotation.x += 0.001; renderer.render(scene, camera); }
+            animate();
+            
+            window.addEventListener('resize', () => {
+                if(container.clientWidth > 0) {
+                    camera.aspect = container.clientWidth / container.clientHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(container.clientWidth, container.clientHeight);
+                }
+            });
+        })();
+
+        // --- SLIDE 2: Dark Studio Streamlines ---
+        (function initWindTunnel() {
+            const container = document.getElementById('canvas-slipstream');
+            const scene = new THREE.Scene();
+
+            // Wide cinematic studio angle
+            const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 0.5, 9.0); 
+            camera.lookAt(0, -0.4, 0);
+
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+
+            // Sleek studio lighting
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const dl = new THREE.DirectionalLight(0xffffff, 1.5); dl.position.set(5, 10, 5); scene.add(dl);
+            const dl2 = new THREE.DirectionalLight(0xffffff, 1.0); dl2.position.set(-5, 5, 8); scene.add(dl2); 
+            const rimLight = new THREE.DirectionalLight(0x00e5ff, 2.0); rimLight.position.set(-5, 5, -5); scene.add(rimLight);
+
+            // Cyan glowing texture for streamlines
+            const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gradient.addColorStop(0, 'rgba(0, 230, 255, 0.25)'); // Softer cyan core (eliminates blown-out pixels)
+            gradient.addColorStop(0.4, 'rgba(0, 230, 255, 0.1)'); // Smooth fade
+            gradient.addColorStop(1, 'rgba(0, 230, 255, 0)');
+            ctx.fillStyle = gradient; ctx.fillRect(0,0,64,64);
+            const tex = new THREE.CanvasTexture(canvas);
+
+            // Streamline System (Massive amount of particles imitating thick wind-tunnel smoke lines)
+            const pCount = 20000;
+            const pGeo = new THREE.BufferGeometry();
+            const pPos = new Float32Array(pCount * 3);
+            const pData = [];
+            
+            // Organize into distinct horizontal bands (the "streamlines")
+            const numBands = 6;
+            for(let i=0; i<pCount; i++) {
+                let band = i % numBands;
+                let origY = -0.3 + (band * 0.3); // Stack them vertically
+                let origZ = (Math.random() - 0.5) * 0.4; // Very tight Z grouping natively
+                
+                // Add some random dispersed mist around the lines
+                if(Math.random() > 0.85) origZ = (Math.random() - 0.5) * 1.5;
+
+                pData.push({
+                    origY: origY,
+                    origZ: origZ,
+                    speed: 0.12 + Math.random() * 0.04, // Fast horizontal wind speed
+                    phase: Math.random() * Math.PI * 2,
+                    band: band
+                });
+                
+                // Spawn randomly across the X axis
+                pPos[i*3] = -7.0 + Math.random() * 14.0;
+                pPos[i*3+1] = origY;
+                pPos[i*3+2] = origZ;
+            }
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+            
+            const pMat = new THREE.PointsMaterial({ 
+                map: tex, transparent: true, depthWrite: false, 
+                size: 0.28, opacity: 0.25, blending: THREE.AdditiveBlending 
+            });
+            const pSys = new THREE.Points(pGeo, pMat);
+            scene.add(pSys);
+
+            // Load the F1 STL
+            const loader = new THREE.STLLoader();
+            loader.load('F1_Assembly_light.STL', function (geometry) {
+                geometry.computeVertexNormals();
+                
+                // Sleek metallic graphite material for high visibility against darkness
+                const carMat = new THREE.MeshStandardMaterial({ color: 0x33383a, metalness: 0.65, roughness: 0.45 });
+                geometry.center(); 
+                const modelScale = 0.00065; 
+
+                // Lead Car (Left Side)
+                const leadCar = new THREE.Mesh(geometry, carMat);
+                leadCar.scale.set(modelScale, modelScale, modelScale);
+                leadCar.position.set(-2.5, -0.6, 0); 
+                leadCar.rotation.set(0, -Math.PI/2, 0); // Face Left towards wind
+                scene.add(leadCar);
+
+                // Trail Car (Right Side)
+                const trailCar = new THREE.Mesh(geometry, carMat);
+                trailCar.scale.set(modelScale, modelScale, modelScale);
+                trailCar.position.set(2.0, -0.6, 0);
+                trailCar.rotation.set(0, -Math.PI/2, 0); // Face Left towards wind
+                scene.add(trailCar);
+            }, function(xhr){}, function(error){ console.error(error); });
+
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                const positions = pSys.geometry.attributes.position.array;
+                for(let i=0; i<pCount; i++) {
+                    let d = pData[i];
+                    positions[i*3] += d.speed; // Flow Rightwards
+                    let x = positions[i*3];
+                    
+                    if(x > 7.0) {
+                        x = -7.0; // Reset wind to front
+                        positions[i*3] = x;
+                    }
+
+                    // Lead car nose is at X = -3.5. 
+                    if (x < -3.5) {
+                        // 1. Laminar Flow (Straight lines before hitting car)
+                        positions[i*3+1] += (d.origY - positions[i*3+1]) * 0.1; // Smoothly return
+                        positions[i*3+2] += (d.origZ - positions[i*3+2]) * 0.1;
+                    } else {
+                        // 2. Turbulent Wake (Fractures into chaotic math after hitting car)
+                        let dist = x - (-3.5);
+                        let turbulence = Math.min(dist * 0.25, 2.5); // Smoother turbulence gradient
+                        
+                        // Fluid "Lift" effect to gracefully push smoke over the canopy
+                        let lift = 0;
+                        if (x > -3.5 && x < -0.5) {
+                            lift = Math.sin((x - (-3.5)) * Math.PI / 3.0) * 0.7; // Wider parabolic lift
+                        }
+                        
+                        d.phase += 0.03 * turbulence; // Softer, less sporadic churning
+                        
+                        // Apply sweeping fluid displacement (less sharp frequency)
+                        positions[i*3+1] = d.origY + lift + (Math.sin(d.phase * 1.2) * turbulence * 0.35);
+                        positions[i*3+2] = d.origZ + (Math.cos(d.phase * 1.1) * turbulence * 0.35);
+                    }
+                }
+                pSys.geometry.attributes.position.needsUpdate = true;
+                
+                // Slow dramatic studio pan
+                scene.rotation.y = Math.sin(Date.now() * 0.0002) * 0.05;
+                renderer.render(scene, camera);
+            }
+            animate();
+            
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        })();
+    </script>
+</body>
+</html>
